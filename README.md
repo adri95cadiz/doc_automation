@@ -152,7 +152,7 @@ Si el reconocimiento de texto no funciona correctamente:
 
 ## Licencia
 
-Este proyecto está licenciado bajo los términos de la licencia MIT.
+Este proyecto está licenciado bajo los términos de la licencia Apache 2.0.
 
 ## Contribuciones
 
