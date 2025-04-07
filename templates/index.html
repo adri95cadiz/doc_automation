@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Documentación Automatizada</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        .navbar {
+            background-color: #343a40;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .navbar-brand {
+            font-weight: bold;
+            color: #fff;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .card-header {
+            font-weight: bold;
+            background-color: #f1f3f5;
+        }
+        .btn-primary {
+            background-color: #0d6efd;
+            border: none;
+        }
+        .btn-primary:hover {
+            background-color: #0b5ed7;
+        }
+        .btn-success {
+            background-color: #198754;
+            border: none;
+        }
+        .btn-success:hover {
+            background-color: #157347;
+        }
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .status-active {
+            background-color: #10b981;
+            animation: pulse 2s infinite;
+        }
+        .status-inactive {
+            background-color: #6c757d;
+        }
+        .status-error {
+            background-color: #ef4444;
+        }
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+            }
+        }
+        .session-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .preview-image {
+            max-width: 100%;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .step-card {
+            margin-bottom: 15px;
+        }
+        #captureStatus {
+            font-weight: bold;
+        }
+        .footer {
+            background-color: #343a40;
+            color: #fff;
+            padding: 20px 0;
+            margin-top: 50px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">DocuMatic</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#capture">Captura</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#sessions">Sesiones</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#documentation">Documentación</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-12">
+                <div class="alert alert-info" role="alert">
+                    <h4 class="alert-heading">Sistema de Documentación Automatizada</h4>
+                    <p>Este sistema captura tus interacciones con aplicaciones web y genera documentación técnica utilizando modelos de IA multimodales.</p>
+                </div>
+            </div>
+        </div>
+
+        <section id="capture" class="mt-5">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            Iniciar Nueva Captura
+                        </div>
+                        <div class="card-body">
+                            <form id="captureForm">
+                                <div class="mb-3">
+                                    <label for="captureTitle" class="form-label">Título de la Sesión</label>
+                                    <input type="text" class="form-control" id="captureTitle" placeholder="Ej: Login de Usuario">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="captureContext" class="form-label">Contexto (Opcional)</label>
+                                    <textarea class="form-control" id="captureContext" rows="3" placeholder="Describe el propósito de esta sesión..."></textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="captureInterval" class="form-label">Intervalo de Captura (segundos)</label>
+                                    <input type="number" class="form-control" id="captureInterval" value="1.5" min="0.5" max="10" step="0.5">
+                                </div>
+                                <div class="d-grid gap-2">
+                                    <button type="button" id="startCaptureBtn" class="btn btn-primary">Iniciar Captura</button>
+                                    <button type="button" id="stopCaptureBtn" class="btn btn-danger" disabled>Detener Captura</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            Estado de Captura
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <span class="status-indicator status-inactive" id="captureIndicator"></span>
+                                <span id="captureStatus">Inactivo</span>
+                            </div>
+                            <div class="mb-3">
+                                <p><strong>ID de Sesión:</strong> <span id="sessionId">-</span></p>
+                                <p><strong>Tiempo Transcurrido:</strong> <span id="elapsedTime">00:00:00</span></p>
+                                <p><strong>Capturas Realizadas:</strong> <span id="captureCount">0</span></p>
+                                <p><strong>Eventos Registrados:</strong> <span id="eventCount">0</span></p>
+                            </div>
+                            <div class="alert alert-warning" role="alert">
+                                <small>Durante la captura, interactúa normalmente con tu aplicación. El sistema registrará automáticamente tus acciones.</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="sessions" class="mt-5">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Sesiones Capturadas</span>
+                    <button id="refreshSessionsBtn" class="btn btn-sm btn-outline-primary">Actualizar</button>
+                </div>
+                <div class="card-body">
+                    <div class="session-list" id="sessionsList">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Cargando...</span>
+                            </div>
+                            <p class="mt-2">Cargando sesiones...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="sessionDetail" class="mt-5" style="display: none;">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Detalles de Sesión: <span id="detailSessionId"></span></span>
+                    <button id="backToSessionsBtn" class="btn btn-sm btn-outline-secondary">Volver a Sesiones</button>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5>Información</h5>
+                            <p><strong>Fecha:</strong> <span id="detailSessionDate"></span></p>
+                            <p><strong>Estado:</strong> <span id="detailSessionStatus"></span></p>
+                            <p><strong>Capturas:</strong> <span id="detailCaptureCount"></span></p>
+                            <p><strong>Eventos:</strong> <span id="detailEventCount"></span></p>
+                            
+                            <div class="mt-4">
+                                <h5>Acciones</h5>
+                                <div class="d-grid gap-2">
+                                    <button id="processSessionBtn" class="btn btn-primary">Procesar Sesión</button>
+                                    <button id="generateDocBtn" class="btn btn-success" disabled>Generar Documentación</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h5>Vista Previa</h5>
+                            <div id="capturePreview" class="text-center">
+                                <p>Selecciona una captura para ver la vista previa</p>
+                            </div>
+                            <div class="mt-3">
+                                <div class="row" id="capturesThumbnails">
+                                    <!-- Miniaturas de capturas -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="documentation" class="mt-5" style="display: none;">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Generar Documentación</span>
+                    <button id="backToDetailBtn" class="btn btn-sm btn-outline-secondary">Volver a Detalles</button>
+                </div>
+                <div class="card-body">
+                    <form id="docForm">
+                        <div class="mb-3">
+                            <label for="docTitle" class="form-label">Título del Documento</label>
+                            <input type="text" class="form-control" id="docTitle" placeholder="Ej: Manual de Usuario - Login">
+                        </div>
+                        <div class="mb-3">
+                            <label for="docAuthor" class="form-label">Autor</label>
+                            <input type="text" class="form-control" id="docAuthor" placeholder="Tu nombre">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Formatos</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="formatMarkdown" checked>
+                                <label class="form-check-label" for="formatMarkdown">
+                                    Markdown
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="formatHTML" checked>
+                                <label class="form-check-label" for="formatHTML">
+                                    HTML
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="formatPDF">
+                                <label class="form-check-label" for="formatPDF">
+                                    PDF
+                                </label>
+                            </div>
+                        </div>
+                        <div class="d-grid">
+                            <button type="button" id="createDocBtn" class="btn btn-success">Crear Documentación</button>
+                        </div>
+                    </form>
+                    
+                    <div id="docResult" class="mt-4" style="display: none;">
+                        <div class="alert alert-success">
+                            <h5>¡Documentación Generada!</h5>
+                            <p>Tu documentación ha sido creada exitosamente.</p>
+                        </div>
+                        <div id="docLinks" class="list-group">
+                            <!-- Enlaces de descarga -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <footer class="footer mt-5">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>DocuMatic</h5>
+                    <p>Sistema de Documentación Automatizada</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <p>Desarrollado con modelos multimodales de código abierto</p>
+                    <p><small>&copy; 2025 Todos los derechos reservados</small></p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Variables globales
+        let captureActive = false;
+        let captureStartTime = null;
+        let elapsedTimeInterval = null;
+        let currentSessionId = null;
+        let statusCheckInterval = null;
+        
+        // Elementos DOM
+        const startCaptureBtn = document.getElementById('startCaptureBtn');
+        const stopCaptureBtn = document.getElementById('stopCaptureBtn');
+        const captureIndicator = document.getElementById('captureIndicator');
+        const captureStatus = document.getElementById('captureStatus');
+        const sessionIdElement = document.getElementById('sessionId');
+        const elapsedTimeElement = document.getElementById('elapsedTime');
+        const captureCountElement = document.getElementById('captureCount');
+        const eventCountElement = document.getElementById('eventCount');
+        const refreshSessionsBtn = document.getElementById('refreshSessionsBtn');
+        const sessionsListElement = document.getElementById('sessionsList');
+        const sessionDetailSection = document.getElementById('sessionDetail');
+        const backToSessionsBtn = document.getElementById('backToSessionsBtn');
+        const detailSessionIdElement = document.getElementById('detailSessionId');
+        const detailSessionDateElement = document.getElementById('detailSessionDate');
+        const detailSessionStatusElement = document.getElementById('detailSessionStatus');
+        const detailCaptureCountElement = document.getElementById('detailCaptureCount');
+        const detailEventCountElement = document.getElementById('detailEventCount');
+        const capturePreviewElement = document.getElementById('capturePreview');
+        const capturesThumbnailsElement = document.getElementById('capturesThumbnails');
+        const processSessionBtn = document.getElementById('processSessionBtn');
+        const generateDocBtn = document.getElementById('generateDocBtn');
+        const documentationSection = document.getElementById('documentation');
+        const backToDetailBtn = document.getElementById('backToDetailBtn');
+        const createDocBtn = document.getElementById('createDocBtn');
+        const docResultElement = document.getElementById('docResult');
+        const docLinksElement = document.getElementById('docLinks');
+        
+        // Event Listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSessions();
+            
+            startCaptureBtn.addEventListener('click', startCapture);
+            stopCaptureBtn.addEventListener('click', stopCapture);
+            refreshSessionsBtn.addEventListener('click', loadSessions);
+            backToSessionsBtn.addEventListener('click', () => {
+                sessionDetailSection.style.display = 'none';
+                document.getElementById('sessions').scrollIntoView({ behavior: 'smooth' });
+            });
+            processSessionBtn.addEventListener('click', processSession);
+            generateDocBtn.addEventListener('click', () => {
+                documentationSection.style.display = 'block';
+                documentationSection.scrollIntoView({ behavior: 'smooth' });
+            });
+            backToDetailBtn.addEventListener('click', () => {
+                documentationSection.style.display = 'none';
+                sessionDetailSection.scrollIntoView({ behavior: 'smooth' });
+            });
+            createDocBtn.addEventListener('click', generateDocumentation);
+        });
+        
+        // Funciones
+        function startCapture() {
+            const title = document.getElementById('captureTitle').value || 'Sesión sin título';
+            const context = document.getElementById('captureContext').value || '';
+            const interval = parseFloat(document.getElementById('captureInterval').value) || 1.5;
+            
+            // Validar intervalo
+            if (interval < 0.5 || interval > 10) {
+                alert('El intervalo debe estar entre 0.5 y 10 segundos');
+                return;
+            }
+            
+            // Preparar datos
+            const formData = new FormData();
+            formData.append('title', title);
+            formData.append('context', context);
+            formData.append('interval', interval);
+            
+            // Enviar solicitud
+            fetch('/start_capture', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    captureActive = true;
+                    currentSessionId = data.session_id;
+                    captureStartTime = new Date();
+                    
+                    // Actualizar UI
+                    startCaptureBtn.disabled = true;
+                    stopCaptureBtn.disabled = false;
+                    captureIndicator.classList.remove('status-inactive');
+                    captureIndicator.classList.add('status-active');
+                    captureStatus.textContent = 'Captura en curso';
+                    sessionIdElement.textContent = data.session_id;
+                    
+                    // Iniciar temporizador
+                    elapsedTimeInterval = setInterval(updateElapsedTime, 1000);
+                    
+                    // Iniciar verificación de estado
+                    statusCheckInterval = setInterval(checkCaptureStatus, 5000);
+                    
+                    // Mostrar mensaje
+                    alert('Captura iniciada correctamente');
+                } else {
+                    alert('Error al iniciar captura: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error al comunicarse con el servidor');
+            });
+        }
+        
+        function stopCapture() {
+            // Enviar solicitud
+            fetch('/stop_capture', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    captureActive = false;
+                    
+                    // Detener temporizadores
+                    clearInterval(elapsedTimeInterval);
+                    clearInterval(statusCheckInterval);
+                    
+                    // Actualizar UI
+                    startCaptureBtn.disabled = false;
+                    stopCaptureBtn.disabled = true;
+                    captureIndicator.classList.remove('status-active');
+                    captureIndicator.classList.add('status-inactive');
+                    captureStatus.textContent = 'Captura detenida';
+                    
+                    // Actualizar contadores
+                    eventCountElement.textContent = data.events_count;
+                    
+                    // Recargar sesiones
+                    loadSessions();
+                    
+                    // Mostrar mensaje
+                    alert(`Captura detenida. Se registraron ${data.events_count} eventos.`);
+                } else {
+                    alert('Error al detener captura: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error al comunicarse con el servidor');
+            });
+        }
+        
+        function updateElapsedTime() {
+            if (!captureStartTime) return;
+            
+            const now = new Date();
+            const elapsed = Math.floor((now - captureStartTime) / 1000);
+            
+            const hours = Math.floor(elapsed / 3600).toString().padStart(2, '0');
+            const minutes = Math.floor((elapsed % 3600) / 60).toString().padStart(2, '0');
+            const seconds = Math.floor(elapsed % 60).toString().padStart(2, '0');
+            
+            elapsedTimeElement.textContent = `${hours}:${minutes}:${seconds}`;
+        }
+        
+        function checkCaptureStatus() {
+            if (!captureActive || !currentSessionId) return;
+            
+            fetch(`/session_info/${currentSessionId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    captureCountElement.textContent = data.session.captures_count;
+                    eventCountElement.textContent = data.session.events_count;
+                }
+            })
+            .catch(error => {
+                console.error('Error al verificar estado:', error);
+            });
+        }
+        
+        function loadSessions() {
+            sessionsListElement.innerHTML = `
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <p class="mt-2">Cargando sesiones...</p>
+                </div>
+            `;
+            
+            fetch('/sessions')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.sessions.length === 0) {
+                        sessionsListElement.innerHTML = `
+                            <div class="text-center py-5">
+                                <p>No hay sesiones disponibles</p>
+                                <button class="btn btn-primary" onclick="document.getElementById('capture').scrollIntoView({ behavior: 'smooth' })">
+                                    Crear Nueva Sesión
+                                </button>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    let html = '';
+                    data.sessions.forEach(session => {
+                        const statusBadge = session.status === 'processed' 
+                            ? '<span class="badge bg-success">Procesada</span>' 
+                            : '<span class="badge bg-warning text-dark">Capturada</span>';
+                            
+                        html += `
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h5 class="card-title">${session.id}</h5>
+                                        ${statusBadge}
+                                    </div>
+                                    <p class="card-text">
+                                        <small class="text-muted">Fecha: ${session.date} ${session.time}</small><br>
+                                        <small class="text-muted">Capturas: ${session.captures_count}</small>
+                                    </p>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="viewSessionDetail('${session.id}')">
+                                        Ver Detalles
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    sessionsListElement.innerHTML = html;
+                } else {
+                    sessionsListElement.innerHTML = `
+                        <div class="alert alert-danger">
+                            Error al cargar sesiones: ${data.error}
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                sessionsListElement.innerHTML = `
+                    <div class="alert alert-danger">
+                        Error al comunicarse con el servidor
+                    </div>
+                `;
+            });
+        }
+        
+        function viewSessionDetail(sessionId) {
+            // Mostrar sección de detalles
+            sessionDetailSection.style.display = 'block';
+            sessionDetailSection.scrollIntoView({ behavior: 'smooth' });
+            
+            // Actualizar ID de sesión
+            detailSessionIdElement.textContent = sessionId;
+            currentSessionId = sessionId;
+            
+            // Cargar información de la sesión
+            fetch(`/session_info/${sessionId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const session = data.session;
+                    
+                    // Actualizar información
+                    detailSessionDateElement.textContent = sessionId.split('_')[0] + ' ' + sessionId.split('_')[1];
+                    detailSessionStatusElement.textContent = session.status === 'processed' ? 'Procesada' : 'Capturada';
+                    detailCaptureCountElement.textContent = session.captures_count;
+                    detailEventCountElement.textContent = session.events_count;
+                    
+                    // Actualizar botones
+                    processSessionBtn.disabled = session.status === 'processed';
+                    generateDocBtn.disabled = session.status !== 'processed';
+                    
+                    // Cargar miniaturas
+                    let thumbnailsHtml = '';
+                    session.captures.forEach((capture, index) => {
+                        thumbnailsHtml += `
+                            <div class="col-4 mb-2">
+                                <img src="/view_image/${sessionId}/${capture.filename}" 
+                                     class="img-thumbnail" 
+                                     onclick="showCapturePreview('${sessionId}', '${capture.filename}')"
+                                     alt="Captura ${index + 1}">
+                            </div>
+                        `;
+                    });
+                    
+                    capturesThumbnailsElement.innerHTML = thumbnailsHtml;
+                    
+                    // Mostrar primera captura si hay
+                    if (session.captures.length > 0) {
+                        showCapturePreview(sessionId, session.captures[0].filename);
+                    } else {
+                        capturePreviewElement.innerHTML = '<p>No hay capturas disponibles</p>';
+                    }
+                } else {
+                    alert('Error al cargar información de sesión: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error al comunicarse con el servidor');
+            });
+        }
+        
+        function showCapturePreview(sessionId, filename) {
+            capturePreviewElement.innerHTML = `
+                <img src="/view_image/${sessionId}/${filename}" class="preview-image" alt="Vista previa">
+            `;
+        }
+        
+        function processSession() {
+            if (!currentSessionId) return;
+            
+            // Mostrar indicador de carga
+            processSessionBtn.disabled = true;
+            processSessionBtn.innerHTML = `
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                Procesando...
+            `;
+            
+            // Enviar solicitud
+            fetch(`/process_session/${currentSessionId}`, {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Actualizar UI
+                    detailSessionStatusElement.textContent = 'Procesada';
+                    processSessionBtn.disabled = true;
+                    generateDocBtn.disabled = false;
+                    
+                    // Restaurar botón
+                    processSessionBtn.innerHTML = 'Procesar Sesión';
+                    
+                    // Mostrar mensaje
+                    alert(`Sesión procesada correctamente. Se identificaron ${data.steps_count} pasos.`);
+                } else {
+                    // Restaurar botón
+                    processSessionBtn.disabled = false;
+                    processSessionBtn.innerHTML = 'Procesar Sesión';
+                    
+                    // Mostrar error
+                    alert('Error al procesar sesión: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                
+                // Restaurar botón
+                processSessionBtn.disabled = false;
+                processSessionBtn.innerHTML = 'Procesar Sesión';
+                
+                // Mostrar error
+                alert('Error al comunicarse con el servidor');
+            });
+        }
+        
+        function generateDocumentation() {
+            if (!currentSessionId) return;
+            
+            // Obtener datos del formulario
+            const title = document.getElementById('docTitle').value || `Manual de Usuario - ${currentSessionId}`;
+            const author = document.getElementById('docAuthor').value || 'Sistema Automático';
+            
+            // Obtener formatos seleccionados
+            const formats = [];
+            if (document.getElementById('formatMarkdown').checked) formats.push('markdown');
+            if (document.getElementById('formatHTML').checked) formats.push('html');
+            if (document.getElementById('formatPDF').checked) formats.push('pdf');
+            
+            if (formats.length === 0) {
+                alert('Selecciona al menos un formato de salida');
+                return;
+            }
+            
+            // Mostrar indicador de carga
+            createDocBtn.disabled = true;
+            createDocBtn.innerHTML = `
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                Generando...
+            `;
+            
+            // Preparar datos
+            const formData = new FormData();
+            formData.append('title', title);
+            formData.append('author', author);
+            formats.forEach(format => {
+                formData.append('formats', format);
+            });
+            
+            // Enviar solicitud
+            fetch(`/generate_documentation/${currentSessionId}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Mostrar resultados
+                    docResultElement.style.display = 'block';
+                    
+                    // Generar enlaces de descarga
+                    let linksHtml = '';
+                    for (const [format, filename] of Object.entries(data.outputs)) {
+                        const formatLabel = format.charAt(0).toUpperCase() + format.slice(1);
+                        linksHtml += `
+                            <a href="/download/${filename}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                Descargar ${formatLabel}
+                                <span class="badge bg-primary rounded-pill">
+                                    <i class="bi bi-download"></i>
+                                </span>
+                            </a>
+                        `;
+                    }
+                    
+                    docLinksElement.innerHTML = linksHtml;
+                    
+                    // Restaurar botón
+                    createDocBtn.disabled = false;
+                    createDocBtn.innerHTML = 'Crear Documentación';
+                    
+                    // Desplazar a resultados
+                    docResultElement.scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    // Restaurar botón
+                    createDocBtn.disabled = false;
+                    createDocBtn.innerHTML = 'Crear Documentación';
+                    
+                    // Mostrar error
+                    alert('Error al generar documentación: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                
+                // Restaurar botón
+                createDocBtn.disabled = false;
+                createDocBtn.innerHTML = 'Crear Documentación';
+                
+                // Mostrar error
+                alert('Error al comunicarse con el servidor');
+            });
+        }
+        
+        // Función global para ver detalles de sesión
+        window.viewSessionDetail = viewSessionDetail;
+        
+        // Función global para mostrar vista previa de captura
+        window.showCapturePreview = showCapturePreview;
+    </script>
+</body>
+</html>

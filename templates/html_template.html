@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        img {
+            max-width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 5px;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #3498db;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+        .step {
+            margin-bottom: 30px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+        .metadata {
+            color: #7f8c8d;
+            font-size: 0.9em;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>{{ title }}</h1>
+ECHO est  desactivado.
+    <div class="metadata">
+        <p><strong>Autor:</strong> {{ author }}<br>
+        <strong>Fecha:</strong> {{ date }}</p>
+    </div>
+ECHO est  desactivado.
+    <h2>Introduccion</h2>
+    <p>{{ summary }}</p>
+ECHO est  desactivado.
+    {}
+    <div class="step">
+        <h2>{{ step.title }}</h2>
+        <img src="{{ step.image_path }}" alt="Captura de pantalla del paso {{ step.number }}">
+        <p>{{ step.description }}</p>
+    </div>
+    {}
+ECHO est  desactivado.
+    <footer>
+        <p><small>Generado automaticamente por el Sistema de Documentacion Automatizada</small></p>
+    </footer>
+</body>
+</html>
