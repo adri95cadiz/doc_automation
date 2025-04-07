@@ -24,7 +24,7 @@ python -m pip install flask pillow pyautogui pynput opencv-python jinja2 markdow
 echo Instalando dependencias para el modelo multimodal...
 
 :: Instalar dependencias para el modelo multimodal
-python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 python -m pip install transformers accelerate bitsandbytes
 
 echo Instalando dependencias para desarrollo y pruebas...

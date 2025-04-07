@@ -39,8 +39,8 @@ app.config.update(
     OUTPUT_DIR=os.path.join(os.path.dirname(__file__), 'data', 'output'),
     TEMPLATES_DIR=os.path.join(os.path.dirname(__file__), 'templates'),
     OCR_LANG='spa',
-    LLM_MODEL='llava-hf/llava-1.5-7b-hf',
-    LOAD_IN_8BIT=True
+    LLM_MODEL='Salesforce/blip2-opt-2.7b',
+    LOAD_IN_8BIT=False
 )
 
 # Crear directorios necesarios
