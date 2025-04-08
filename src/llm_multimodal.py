@@ -109,25 +109,28 @@ class MultimodalLLMEngine:
             # Cargar modelo según su tipo
             if "git" in self.model_name.lower():
                 # Cargar GIT (más ligero y compatible)
-                from transformers import AutoProcessor, AutoModelForCausalLM
+                from transformers import AutoProcessor, AutoModelForCausalLM, AutoTokenizer
                 
                 self.processor = AutoProcessor.from_pretrained(self.model_name, **load_options)
                 self.model = AutoModelForCausalLM.from_pretrained(self.model_name, **load_options)
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, **load_options)
                 logger.info("Modelo GIT cargado correctamente")
             elif "blip" in self.model_name.lower():
                 # Cargar BLIP2 (con manejo especial para Windows)
-                from transformers import AutoProcessor, BlipForConditionalGeneration
+                from transformers import AutoProcessor, BlipForConditionalGeneration, AutoTokenizer
                 
                 self.processor = AutoProcessor.from_pretrained(self.model_name, **load_options)
                 self.model = BlipForConditionalGeneration.from_pretrained(self.model_name, **load_options)
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, **load_options)
                 logger.info("Modelo BLIP2 cargado correctamente")
             else:
                 # Intentar cargar otros modelos multimodales
                 try:
-                    from transformers import AutoProcessor, AutoModelForVision2Seq
+                    from transformers import AutoProcessor, AutoModelForVision2Seq, AutoTokenizer
                     
                     self.processor = AutoProcessor.from_pretrained(self.model_name, **load_options)
                     self.model = AutoModelForVision2Seq.from_pretrained(self.model_name, **load_options)
+                    self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, **load_options)
                     logger.info("Modelo cargado correctamente usando AutoModelForVision2Seq")
                 except Exception as e:
                     logger.error(f"Error al cargar modelo específico: {str(e)}")
@@ -136,10 +139,11 @@ class MultimodalLLMEngine:
                     alt_model = "microsoft/git-base"
                     logger.info(f"Intentando con modelo alternativo: {alt_model}")
                     
-                    from transformers import AutoProcessor, AutoModelForCausalLM
+                    from transformers import AutoProcessor, AutoModelForCausalLM, AutoTokenizer
                     
                     self.processor = AutoProcessor.from_pretrained(alt_model, **load_options)
                     self.model = AutoModelForCausalLM.from_pretrained(alt_model, **load_options)
+                    self.tokenizer = AutoTokenizer.from_pretrained(alt_model, **load_options)
                     logger.info("Modelo alternativo cargado correctamente")
             
             logger.info("Modelo cargado correctamente")
@@ -149,6 +153,7 @@ class MultimodalLLMEngine:
             logger.error(traceback.format_exc())
             self.model = None
             self.processor = None
+            self.tokenizer = None
     
     def unload_model(self):
         """
@@ -211,7 +216,7 @@ class MultimodalLLMEngine:
             prompt = self._prepare_step_prompt_short(step, context, extracted_text)
             
             # Generar descripción
-            description = self._generate_description(image, prompt)
+            description = self._generate_description(image_path, prompt)
             
             return {
                 "success": True,
@@ -275,7 +280,7 @@ class MultimodalLLMEngine:
             prompt = self._prepare_workflow_prompt_short(processed_data)
             
             # Generar resumen
-            summary = self._generate_description(image, prompt)
+            summary = self._generate_description(image_path, prompt)
             
             return {
                 "success": True,
@@ -292,7 +297,7 @@ class MultimodalLLMEngine:
     
     def _prepare_step_prompt_short(self, step, context, extracted_text):
         """
-        Prepara un prompt corto para analizar un paso (evita errores de longitud).
+        Prepara un prompt corto para analizar un paso.
         
         Args:
             step: Datos del paso
@@ -300,16 +305,20 @@ class MultimodalLLMEngine:
             extracted_text: Texto extraído de la imagen
             
         Returns:
-            str: Prompt para el modelo
+            str: Prompt generado
         """
-        # Limitar la longitud del texto extraído
-        if extracted_text and len(extracted_text) > 200:
-            extracted_text = extracted_text[:200] + "..."
-        
-        # Construir prompt corto
-        prompt = f"""Describe esta captura de pantalla. Paso {step.get('index', 0) + 1}.
-Contexto: {context[:50]}
+        prompt = f"""Eres un experto en documentación técnica. Describe esta captura de pantalla de forma clara y concisa.
+
+Contexto: {context}
 Texto extraído: {extracted_text}
+
+Tu descripción debe:
+1. Identificar la pantalla o interfaz mostrada
+2. Describir los elementos principales visibles (campos, botones, etc.)
+3. Explicar el propósito o función de esta pantalla
+4. Ser clara y directa, evitando repeticiones
+5. Usar lenguaje técnico apropiado
+
 Descripción:"""
         
         return prompt
@@ -358,21 +367,25 @@ Descripción:"""
             processed_data: Datos procesados de la sesión
             
         Returns:
-            str: Prompt para el modelo
+            str: Prompt generado
         """
-        # Obtener contexto y tipo de flujo
         context = processed_data.get("context", "")
         workflow_type = processed_data.get("workflow_type", "general")
+        steps_count = len(processed_data.get("steps", []))
         
-        # Obtener pasos
-        steps = processed_data.get("steps", [])
-        steps_count = len(steps)
-        
-        # Construir prompt corto
-        prompt = f"""Genera un resumen para este flujo de trabajo.
-Contexto: {context[:100]}
-Tipo: {workflow_type}
-Pasos: {steps_count}
+        prompt = f"""Eres un experto en documentación técnica. Genera un resumen conciso y útil para este flujo de trabajo.
+
+Contexto: {context}
+Tipo de flujo: {workflow_type}
+Número de pasos: {steps_count}
+
+El resumen debe:
+1. Explicar el propósito principal del flujo de trabajo
+2. Describir brevemente qué se logrará al completarlo
+3. Mencionar los puntos clave que el usuario debe entender
+4. Ser claro y directo, evitando repeticiones
+5. Usar lenguaje técnico apropiado
+
 Resumen:"""
         
         return prompt
@@ -410,127 +423,210 @@ Resumen introductorio:"""
         
         return prompt
     
-    def _generate_description(self, image, prompt):
+    def _generate_description(self, image_path, prompt, annotations=None):
         """
-        Genera una descripción a partir de una imagen y un prompt.
+        Genera una descripción detallada de una imagen y sus anotaciones.
         
         Args:
-            image: Imagen PIL
-            prompt: Prompt para el modelo
+            image_path: Ruta de la imagen
+            prompt: Prompt base para la generación
+            annotations: Lista de anotaciones (opcional)
             
         Returns:
             str: Descripción generada
         """
         try:
-            # Asegurar que la imagen tenga el formato correcto
-            if image.mode != "RGB":
-                image = image.convert("RGB")
+            # Cargar y preparar la imagen
+            image = Image.open(image_path)
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
             
-            # Redimensionar imagen para mejor compatibilidad
-            image = image.resize((224, 224))
+            # Preparar el contexto con anotaciones
+            context = self._prepare_context(prompt, annotations)
             
-            # Procesar con el modelo
-            try:
-                # Procesar imagen y texto
-                inputs = self.processor(images=image, text=prompt, return_tensors="pt").to(self.device)
-                
-                # Generar respuesta con límite de tokens reducido
-                with torch.no_grad():
-                    try:
-                        outputs = self.model.generate(
-                            **inputs,
-                            max_new_tokens=100,  # Reducir para evitar errores
-                            do_sample=False
-                        )
-                    except RuntimeError as e:
-                        if "must match the size" in str(e):
-                            # Error de tamaño de tensor - usar prompt más corto
-                            logger.warning("Error de tamaño de tensor, usando prompt más corto")
-                            short_prompt = prompt.split("\n")[0]  # Solo la primera línea
-                            inputs = self.processor(images=image, text=short_prompt, return_tensors="pt").to(self.device)
-                            outputs = self.model.generate(
-                                **inputs,
-                                max_new_tokens=50,
-                                do_sample=False
-                            )
-                        else:
-                            raise e
-                
-                # Decodificar respuesta - Compatible con diferentes modelos
-                generated_text = ""
-                
-                # Método 1: Usar generate_caption si está disponible (BLIP2)
-                if hasattr(self.model, "generate_caption"):
-                    try:
-                        generated_text = self.model.generate_caption(image=image, prompt=prompt[:100])  # Limitar longitud
-                    except Exception as caption_error:
-                        logger.warning(f"Error al usar generate_caption: {str(caption_error)}")
-                
-                # Método 2: Usar el tokenizador del modelo
-                if not generated_text:
-                    try:
-                        if hasattr(self.model, "config"):
-                            if hasattr(self.model.config, "text_config"):
-                                # Para BLIP2
-                                from transformers import AutoTokenizer
-                                tokenizer = AutoTokenizer.from_pretrained(self.model.config.text_config.name_or_path)
-                                generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-                            else:
-                                # Para otros modelos
-                                if hasattr(self.processor, "tokenizer"):
-                                    generated_text = self.processor.tokenizer.decode(outputs[0], skip_special_tokens=True)
-                    except Exception as tokenizer_error:
-                        logger.warning(f"Error al usar tokenizador: {str(tokenizer_error)}")
-                
-                # Método 3: Usar el procesador directamente
-                if not generated_text:
-                    try:
-                        if hasattr(self.processor, "decode"):
-                            generated_text = self.processor.decode(outputs[0], skip_special_tokens=True)
-                    except Exception as processor_error:
-                        logger.warning(f"Error al usar processor.decode: {str(processor_error)}")
-                
-                # Método 4: Último recurso - extraer texto del prompt
-                if not generated_text:
-                    extracted_text = ""
-                    if "Texto extraído:" in prompt:
-                        parts = prompt.split("Texto extraído:")
-                        if len(parts) > 1:
-                            extracted_text = parts[1].strip()
+            # Intentar diferentes configuraciones para obtener la mejor descripción
+            descriptions = []
+            
+            configs = [
+                {'max_length': 150, 'temperature': 0.7},
+                {'max_length': 200, 'temperature': 0.5},
+                {'max_length': 250, 'temperature': 0.3}
+            ]
+            
+            for config in configs:
+                try:
+                    # Generar descripción con configuración actual
+                    inputs = self.processor(
+                        images=image,
+                        text=context,
+                        return_tensors="pt",
+                        max_length=config['max_length'],
+                        padding=True,
+                        truncation=True
+                    ).to(self.device)
                     
-                    if extracted_text:
-                        generated_text = f"En esta imagen se muestra: {extracted_text}"
-                    else:
-                        generated_text = "Esta imagen muestra una interfaz de usuario con elementos interactivos."
-                
-                # Extraer solo la respuesta (eliminar el prompt si está presente)
-                if prompt in generated_text:
-                    response = generated_text[generated_text.find(prompt) + len(prompt):].strip()
-                else:
-                    response = generated_text.strip()
-                
-                return response
-                
-            except Exception as e:
-                logger.error(f"Error al generar con modelo principal: {str(e)}")
-                logger.error(traceback.format_exc())
-                
-                # Método alternativo: usar solo el texto extraído
-                extracted_text = ""
-                if "Texto extraído:" in prompt:
-                    parts = prompt.split("Texto extraído:")
-                    if len(parts) > 1:
-                        extracted_text = parts[1].strip()
-                
-                if extracted_text:
-                    return f"Basado en el texto extraído de la imagen, este paso muestra: {extracted_text}"
-                else:
-                    return "No se pudo generar una descripción detallada para este paso. Consulte la imagen para más información."
+                    outputs = self.model.generate(
+                        **inputs,
+                        do_sample=True,
+                        temperature=config['temperature'],
+                        max_new_tokens=config['max_length'],
+                        repetition_penalty=1.5,
+                        length_penalty=1.2,
+                        num_return_sequences=1
+                    )
+                    
+                    # Decodificar y limpiar la descripción
+                    description = self.processor.decode(
+                        outputs[0],
+                        skip_special_tokens=True
+                    )
+                    
+                    description = self._format_description(description)
+                    
+                    if self._is_valid_description(description):
+                        descriptions.append(description)
+                    
+                except Exception as e:
+                    logger.warning(f"Error en configuración {config}: {str(e)}")
+                    continue
+            
+            # Seleccionar la mejor descripción
+            if descriptions:
+                return self._select_best_description(descriptions)
+            else:
+                return self._generate_fallback_description(prompt)
             
         except Exception as e:
             logger.error(f"Error al generar descripción: {str(e)}")
             logger.error(traceback.format_exc())
-            return f"No se pudo generar una descripción: {str(e)}"
+            return "No se pudo generar una descripción para esta imagen."
+    
+    def _prepare_context(self, prompt, annotations=None):
+        """
+        Prepara el contexto combinando el prompt y las anotaciones.
+        
+        Args:
+            prompt: Prompt base
+            annotations: Lista de anotaciones
+            
+        Returns:
+            str: Contexto completo
+        """
+        context = prompt + "\n\n"
+        
+        if annotations:
+            context += "Eventos detectados:\n"
+            for idx, ann in enumerate(annotations, 1):
+                event_type = ann.get('type', '')
+                x, y = ann.get('x', 0), ann.get('y', 0)
+                
+                if event_type == 'click':
+                    context += f"{idx}. Click en posición ({x}, {y})\n"
+                elif event_type == 'text':
+                    text = ann.get('text', '')
+                    context += f"{idx}. Texto ingresado: '{text}' en ({x}, {y})\n"
+                elif event_type == 'hover':
+                    context += f"{idx}. Hover en ({x}, {y})\n"
+                elif event_type == 'drag':
+                    end_x = ann.get('end_x', x)
+                    end_y = ann.get('end_y', y)
+                    context += f"{idx}. Arrastre desde ({x}, {y}) hasta ({end_x}, {end_y})\n"
+        
+        return context
+    
+    def _format_description(self, description):
+        """
+        Formatea y limpia una descripción generada.
+        
+        Args:
+            description: Descripción a formatear
+            
+        Returns:
+            str: Descripción formateada
+        """
+        # Eliminar espacios extra
+        description = ' '.join(description.split())
+        
+        # Capitalizar primera letra de cada oración
+        sentences = description.split('. ')
+        sentences = [s.capitalize() for s in sentences if s]
+        description = '. '.join(sentences)
+        
+        # Asegurar punto final
+        if not description.endswith('.'):
+            description += '.'
+        
+        return description
+    
+    def _is_valid_description(self, description):
+        """
+        Verifica si una descripción cumple con los criterios mínimos.
+        
+        Args:
+            description: Descripción a validar
+            
+        Returns:
+            bool: True si la descripción es válida
+        """
+        # Verificar longitud mínima (20 palabras)
+        if len(description.split()) < 20:
+            return False
+        
+        # Verificar que no sea muy repetitiva
+        words = description.lower().split()
+        word_freq = {}
+        for word in words:
+            if len(word) > 3:  # Ignorar palabras cortas
+                word_freq[word] = word_freq.get(word, 0) + 1
+                if word_freq[word] > 3:  # Más de 3 repeticiones
+                    return False
+        
+        return True
+    
+    def _select_best_description(self, descriptions):
+        """
+        Selecciona la mejor descripción basada en criterios de calidad.
+        
+        Args:
+            descriptions: Lista de descripciones candidatas
+            
+        Returns:
+            str: La mejor descripción
+        """
+        best_score = -1
+        best_description = descriptions[0]
+        
+        for desc in descriptions:
+            # Calcular puntuación basada en varios criterios
+            words = desc.split()
+            unique_words = len(set(words))
+            total_words = len(words)
+            avg_word_length = sum(len(w) for w in words) / total_words
+            
+            # Fórmula de puntuación
+            score = (unique_words / total_words) * avg_word_length
+            
+            if score > best_score:
+                best_score = score
+                best_description = desc
+        
+        return best_description
+    
+    def _generate_fallback_description(self, prompt):
+        """
+        Genera una descripción de respaldo cuando fallan los intentos principales.
+        
+        Args:
+            prompt: Prompt original
+            
+        Returns:
+            str: Descripción de respaldo
+        """
+        return (
+            "Esta imagen muestra una interfaz de usuario interactiva. "
+            "Se pueden observar elementos de la interfaz y acciones del usuario "
+            "que demuestran la interacción con el sistema."
+        )
 
 def create_multimodal_llm_engine(model_name="microsoft/git-base", load_in_8bit=True, load_in_4bit=False, cache_dir=None):
     """

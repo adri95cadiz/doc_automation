@@ -10,8 +10,9 @@ import json
 import logging
 import datetime
 import argparse
+import shutil
 from flask import Flask, render_template, request, jsonify, send_from_directory
-from src.screen_capture import create_capture_manager
+from src.screen_capture import create_capture_manager, CaptureManager
 from src.image_processor import create_image_processor
 from src.llm_multimodal import create_multimodal_llm_engine
 from src.doc_generator import create_document_generator
@@ -61,27 +62,24 @@ def init_components(args):
     logger.info("Inicializando componentes del sistema...")
     
     # Inicializar gestor de captura
-    capture_manager = create_capture_manager(
+    capture_manager = CaptureManager(
         output_dir=app.config['CAPTURES_DIR'],
-        interval=1.5
+        interval=1.5,  # Intervalo por defecto
+        capture_mode="images",  # Modo por defecto
+        start_delay=3,  # Delay por defecto
+        blur_sensitive_data=True  # Difuminar datos sensibles por defecto
     )
     logger.info("Gestor de captura inicializado")
     
     # Inicializar procesador de imágenes
-    image_processor = create_image_processor(
-        ocr_lang=app.config['OCR_LANG']
-    )
+    image_processor = create_image_processor()
     logger.info("Procesador de imágenes inicializado")
     
     # Inicializar motor multimodal si no está deshabilitado
     if not args.no_multimodal:
         try:
             logger.info(f"Inicializando motor multimodal con modelo: {app.config['LLM_MODEL']}")
-            llm_engine = create_multimodal_llm_engine(
-                model_name=app.config['LLM_MODEL'],
-                load_in_8bit=app.config['LOAD_IN_8BIT'],
-                cache_dir=os.path.join(app.config['DATA_DIR'], 'models')
-            )
+            llm_engine = create_multimodal_llm_engine()
             logger.info("Motor multimodal inicializado correctamente")
         except Exception as e:
             logger.error(f"Error al inicializar motor multimodal: {str(e)}")
@@ -90,10 +88,7 @@ def init_components(args):
         logger.info("Motor multimodal deshabilitado por argumento --no-multimodal")
     
     # Inicializar generador de documentación
-    doc_generator = create_document_generator(
-        templates_dir=app.config['TEMPLATES_DIR'],
-        output_dir=app.config['OUTPUT_DIR']
-    )
+    doc_generator = create_document_generator(llm_engine, image_processor)
     logger.info("Generador de documentación inicializado")
     
     logger.info("Todos los componentes inicializados correctamente")
@@ -177,18 +172,39 @@ def process_session(session_id):
         if not os.path.exists(session_dir):
             return jsonify({
                 'success': False,
-                'error': f'Sesión no encontrada: {session_id}'
-            }), 404
+                'error': f'Sesión no encontrada: {session_id}',
+                'toast': {
+                    'title': 'Error',
+                    'message': f'Sesión no encontrada: {session_id}',
+                    'type': 'error'
+                }
+            })
+        
+        # Cargar eventos si existen
+        events = []
+        events_file = os.path.join(session_dir, 'events.json')
+        if os.path.exists(events_file):
+            try:
+                with open(events_file, 'r') as f:
+                    events = json.load(f)
+            except Exception as e:
+                logger.error(f"Error al cargar eventos: {str(e)}")
         
         # Procesar sesión
         logger.info(f"Procesando sesión: {session_id}")
-        result = image_processor.process_session(session_dir)
+        result = image_processor.process_session(session_dir, events=events)
         
-        if not result['success']:
+        if not isinstance(result, dict) or not result.get('success'):
+            error_msg = result.get('error', 'Error desconocido al procesar sesión') if isinstance(result, dict) else 'Error en el procesamiento'
             return jsonify({
                 'success': False,
-                'error': result.get('error', 'Error desconocido al procesar sesión')
-            }), 500
+                'error': error_msg,
+                'toast': {
+                    'title': 'Error',
+                    'message': error_msg,
+                    'type': 'error'
+                }
+            })
         
         # Si hay motor multimodal, analizar con él
         analyzed_data = {'step_analyses': {}, 'workflow_summary': {}}
@@ -223,24 +239,38 @@ def process_session(session_id):
                 logger.info(f"Análisis multimodal completado y guardado en: {analysis_file}")
             except Exception as e:
                 logger.error(f"Error en análisis multimodal: {str(e)}")
-                import traceback
-                logger.error(traceback.format_exc())
+                return jsonify({
+                    'success': False,
+                    'error': str(e),
+                    'toast': {
+                        'title': 'Error',
+                        'message': f'Error en análisis multimodal: {str(e)}',
+                        'type': 'error'
+                    }
+                })
         else:
             logger.warning("No hay motor multimodal disponible, se omite el análisis avanzado")
         
         return jsonify({
             'success': True,
-            'steps_count': result['steps_count'],
-            'message': f'Sesión procesada con {result["steps_count"]} pasos.'
+            'steps_count': result.get('steps_count', 0),
+            'toast': {
+                'title': 'Sesión procesada',
+                'message': f'Sesión procesada con {result.get("steps_count", 0)} pasos.',
+                'type': 'success'
+            }
         })
     except Exception as e:
         logger.error(f"Error al procesar sesión: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
         return jsonify({
             'success': False,
-            'error': str(e)
-        }), 500
+            'error': str(e),
+            'toast': {
+                'title': 'Error',
+                'message': f'Error al procesar sesión: {str(e)}',
+                'type': 'error'
+            }
+        })
 
 @app.route('/generate_documentation/<session_id>', methods=['POST'])
 def generate_documentation(session_id):
@@ -446,6 +476,59 @@ def session_info(session_id):
             'success': False,
             'error': str(e)
         }), 500
+
+@app.route('/delete_session/<session_id>', methods=['DELETE'])
+def delete_session(session_id):
+    """Elimina una sesión y todos sus archivos asociados."""
+    try:
+        # Verificar que la sesión existe
+        session_dir = os.path.join(app.config['CAPTURES_DIR'], session_id)
+        if not os.path.exists(session_dir):
+            return jsonify({
+                'success': False,
+                'error': f'Sesión no encontrada: {session_id}',
+                'toast': {
+                    'title': 'Error',
+                    'message': f'Sesión no encontrada: {session_id}',
+                    'type': 'error'
+                }
+            })
+        
+        # Eliminar directorio de sesión
+        try:
+            shutil.rmtree(session_dir)
+            logger.info(f"Sesión eliminada correctamente: {session_id}")
+            return jsonify({
+                'success': True,
+                'toast': {
+                    'title': 'Sesión eliminada',
+                    'message': f'Sesión {session_id} eliminada correctamente',
+                    'type': 'success'
+                }
+            })
+        except Exception as e:
+            logger.error(f"Error al eliminar directorio {session_dir}: {str(e)}")
+            return jsonify({
+                'success': False,
+                'error': f'Error al eliminar la sesión {session_id}',
+                'toast': {
+                    'title': 'Error',
+                    'message': f'Error al eliminar la sesión {session_id}',
+                    'type': 'error'
+                }
+            })
+            
+    except Exception as e:
+        logger.error(f"Error al eliminar sesión {session_id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'toast': {
+                'title': 'Error',
+                'message': f'Error al eliminar sesión: {str(e)}',
+                'type': 'error'
+            }
+        })
 
 def parse_args():
     """Parsea los argumentos de línea de comandos."""

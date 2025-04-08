@@ -19,7 +19,7 @@ echo Instalando dependencias basicas...
 
 :: Instalar dependencias básicas
 python -m pip install --upgrade pip
-python -m pip install flask pillow pyautogui pynput opencv-python jinja2 markdown
+python -m pip install flask pillow pyautogui pynput opencv-python jinja2 markdown numpy
 
 echo Instalando dependencias para el modelo multimodal...
 

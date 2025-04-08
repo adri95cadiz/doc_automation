@@ -5,6 +5,7 @@ Este archivo lista todas las dependencias necesarias para ejecutar el sistema.
 """
 
 # Dependencias básicas
+numpy==2.2.4
 flask==2.3.3
 pillow==10.0.0
 pyautogui==0.9.54

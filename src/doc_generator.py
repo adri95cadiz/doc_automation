@@ -34,31 +34,131 @@ class DocumentGenerator:
     Generador de documentación a partir de datos procesados y análisis multimodal.
     """
     
-    def __init__(self, templates_dir="templates", output_dir="data/output"):
+    def __init__(self, llm_processor, image_processor=None, video_processor=None):
         """
         Inicializa el generador de documentación.
         
         Args:
-            templates_dir: Directorio de plantillas
-            output_dir: Directorio de salida para documentación generada
+            llm_processor: Procesador de lenguaje natural
+            image_processor: Procesador de imágenes (opcional)
+            video_processor: Procesador de video (opcional)
         """
-        self.templates_dir = normalize_path(templates_dir)
-        self.output_dir = normalize_path(output_dir)
-        self.platform = get_platform()
+        self.llm_processor = llm_processor
+        self.image_processor = image_processor
+        self.video_processor = video_processor
         
-        # Crear directorios si no existen
-        ensure_dir(output_dir)
+    def process_session(self, session_data):
+        """
+        Procesa una sesión de captura y genera la documentación.
         
-        # Configurar entorno de plantillas Jinja2
-        self.jinja_env = jinja2.Environment(
-            loader=jinja2.FileSystemLoader(templates_dir),
-            autoescape=jinja2.select_autoescape(['html', 'xml']),
-            trim_blocks=True,
-            lstrip_blocks=True
-        )
+        Args:
+            session_data: Datos de la sesión (puede incluir imágenes o video)
+            
+        Returns:
+            dict: Datos procesados para generar documentación
+        """
+        processed_data = {
+            'workflow_summary': '',
+            'steps': []
+        }
         
-        logger.info(f"DocumentGenerator inicializado con plantillas en: {templates_dir}")
-        logger.info(f"Plataforma detectada: {self.platform}")
+        try:
+            # Procesar video si está disponible
+            if 'video_path' in session_data and self.video_processor:
+                keyframe_dir = os.path.join(session_data['output_dir'], 'keyframes')
+                keyframes = self.video_processor.extract_keyframes(
+                    session_data['video_path'], 
+                    keyframe_dir
+                )
+                
+                if keyframes:
+                    processed_data['steps'] = self._process_keyframes(keyframes)
+                    
+            # Procesar imágenes si no hay video o si falló el procesamiento de video
+            elif 'captures' in session_data and self.image_processor:
+                processed_data['steps'] = self._process_captures(session_data['captures'])
+                
+            # Generar resumen del workflow
+            if processed_data['steps']:
+                processed_data['workflow_summary'] = self.llm_processor.generate_workflow_summary(
+                    processed_data['steps']
+                )
+                
+            return processed_data
+            
+        except Exception as e:
+            logger.error(f"Error al procesar sesión: {str(e)}")
+            return processed_data
+            
+    def _process_keyframes(self, keyframe_paths):
+        """
+        Procesa los frames clave extraídos del video.
+        
+        Args:
+            keyframe_paths: Lista de rutas a los frames
+            
+        Returns:
+            list: Lista de pasos procesados
+        """
+        steps = []
+        
+        for frame_path in keyframe_paths:
+            try:
+                # Extraer texto de la imagen
+                extracted_text = self.image_processor.extract_text(frame_path)
+                
+                # Generar descripción usando el LLM
+                description = self.llm_processor.generate_description(
+                    frame_path,
+                    extracted_text
+                )
+                
+                steps.append({
+                    'image_path': frame_path,
+                    'text': extracted_text,
+                    'description': description
+                })
+                
+            except Exception as e:
+                logger.error(f"Error al procesar frame {frame_path}: {str(e)}")
+                continue
+                
+        return steps
+        
+    def _process_captures(self, captures):
+        """
+        Procesa las capturas de pantalla individuales.
+        
+        Args:
+            captures: Lista de rutas a las capturas
+            
+        Returns:
+            list: Lista de pasos procesados
+        """
+        steps = []
+        
+        for capture in captures:
+            try:
+                # Extraer texto de la imagen
+                extracted_text = self.image_processor.extract_text(capture)
+                
+                # Generar descripción usando el LLM
+                description = self.llm_processor.generate_description(
+                    capture,
+                    extracted_text
+                )
+                
+                steps.append({
+                    'image_path': capture,
+                    'text': extracted_text,
+                    'description': description
+                })
+                
+            except Exception as e:
+                logger.error(f"Error al procesar captura {capture}: {str(e)}")
+                continue
+                
+        return steps
     
     def generate_documentation(self, session_dir, analyzed_data, title="Manual de Usuario", 
                               author="Sistema Automático", formats=None):
