@@ -204,11 +204,8 @@ class MultimodalLLMEngine:
             # Cargar imagen
             image = Image.open(image_path)
             
-            # Obtener texto extraído
-            extracted_text = step.get("image", {}).get("text", "")
-            
             # Preparar prompt (versión reducida para evitar errores de longitud)
-            prompt = self._prepare_step_prompt_short(step, context, extracted_text)
+            prompt = self._prepare_step_prompt_short(step, context)
             
             # Generar descripción
             description = self._generate_description(image, prompt)
@@ -290,38 +287,45 @@ class MultimodalLLMEngine:
                 "summary": f"Error al analizar flujo de trabajo: {str(e)}"
             }
     
-    def _prepare_step_prompt_short(self, step, context, extracted_text):
+    def _prepare_step_prompt_short(self, step, context):
         """
         Prepara un prompt corto para analizar un paso (evita errores de longitud).
         
         Args:
             step: Datos del paso
             context: Contexto de la sesión
-            extracted_text: Texto extraído de la imagen
             
         Returns:
             str: Prompt para el modelo
         """
-        # Limitar la longitud del texto extraído
-        if extracted_text and len(extracted_text) > 200:
-            extracted_text = extracted_text[:200] + "..."
+        # Obtener eventos
+        events = step.get("events", [])
+
+        # Formatear eventos (limitado)
+        events_text = ""
+        for i, event in enumerate(events[:5]):  # Limitar a 5 eventos
+            event_type = event.get("type", "")
+            if event_type == "mouse_click":
+                events_text += f"- Clic en ({event.get('x', 0)}, {event.get('y', 0)})\n"
+            elif event_type == "key_press":
+                events_text += f"- Tecla: {event.get('key', '')}\n"
+            elif event_type == "mouse_scroll":
+                events_text += f"- Scroll\n"
         
         # Construir prompt corto
         prompt = f"""Describe esta captura de pantalla. Paso {step.get('index', 0) + 1}.
 Contexto: {context[:50]}
-Texto extraído: {extracted_text}
 Descripción:"""
         
         return prompt
     
-    def _prepare_step_prompt(self, step, context, extracted_text):
+    def _prepare_step_prompt(self, step, context):
         """
         Prepara el prompt completo para analizar un paso.
         
         Args:
             step: Datos del paso
             context: Contexto de la sesión
-            extracted_text: Texto extraído de la imagen
             
         Returns:
             str: Prompt para el modelo
@@ -345,7 +349,6 @@ Descripción:"""
 Paso: {step.get('index', 0) + 1}
 Contexto: {context[:100]}
 Eventos: {events_text}
-Texto: {extracted_text[:200]}
 Descripción:"""
         
         return prompt
@@ -429,103 +432,72 @@ Resumen introductorio:"""
             # Redimensionar imagen para mejor compatibilidad
             image = image.resize((224, 224))
             
-            # Procesar con el modelo
-            try:
-                # Procesar imagen y texto
-                inputs = self.processor(images=image, text=prompt, return_tensors="pt").to(self.device)
-                
-                # Generar respuesta con límite de tokens reducido
-                with torch.no_grad():
-                    try:
+            # Procesar imagen y texto
+            inputs = self.processor(images=image, text=prompt, return_tensors="pt").to(self.device)
+            
+            # Generar respuesta con límite de tokens reducido
+            with torch.no_grad():
+                try:
+                    outputs = self.model.generate(
+                        **inputs,
+                        max_new_tokens=100,  # Reducir para evitar errores
+                        do_sample=False
+                    )
+                except RuntimeError as e:
+                    if "must match the size" in str(e):
+                        # Error de tamaño de tensor - usar prompt más corto
+                        logger.warning("Error de tamaño de tensor, usando prompt más corto")
+                        short_prompt = prompt.split("\n")[0]  # Solo la primera línea
+                        inputs = self.processor(images=image, text=short_prompt, return_tensors="pt").to(self.device)
                         outputs = self.model.generate(
                             **inputs,
-                            max_new_tokens=100,  # Reducir para evitar errores
+                            max_new_tokens=50,
                             do_sample=False
                         )
-                    except RuntimeError as e:
-                        if "must match the size" in str(e):
-                            # Error de tamaño de tensor - usar prompt más corto
-                            logger.warning("Error de tamaño de tensor, usando prompt más corto")
-                            short_prompt = prompt.split("\n")[0]  # Solo la primera línea
-                            inputs = self.processor(images=image, text=short_prompt, return_tensors="pt").to(self.device)
-                            outputs = self.model.generate(
-                                **inputs,
-                                max_new_tokens=50,
-                                do_sample=False
-                            )
-                        else:
-                            raise e
-                
-                # Decodificar respuesta - Compatible con diferentes modelos
-                generated_text = ""
-                
-                # Método 1: Usar generate_caption si está disponible (BLIP2)
-                if hasattr(self.model, "generate_caption"):
-                    try:
-                        generated_text = self.model.generate_caption(image=image, prompt=prompt[:100])  # Limitar longitud
-                    except Exception as caption_error:
-                        logger.warning(f"Error al usar generate_caption: {str(caption_error)}")
-                
-                # Método 2: Usar el tokenizador del modelo
-                if not generated_text:
-                    try:
-                        if hasattr(self.model, "config"):
-                            if hasattr(self.model.config, "text_config"):
-                                # Para BLIP2
-                                from transformers import AutoTokenizer
-                                tokenizer = AutoTokenizer.from_pretrained(self.model.config.text_config.name_or_path)
-                                generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-                            else:
-                                # Para otros modelos
-                                if hasattr(self.processor, "tokenizer"):
-                                    generated_text = self.processor.tokenizer.decode(outputs[0], skip_special_tokens=True)
-                    except Exception as tokenizer_error:
-                        logger.warning(f"Error al usar tokenizador: {str(tokenizer_error)}")
-                
-                # Método 3: Usar el procesador directamente
-                if not generated_text:
-                    try:
-                        if hasattr(self.processor, "decode"):
-                            generated_text = self.processor.decode(outputs[0], skip_special_tokens=True)
-                    except Exception as processor_error:
-                        logger.warning(f"Error al usar processor.decode: {str(processor_error)}")
-                
-                # Método 4: Último recurso - extraer texto del prompt
-                if not generated_text:
-                    extracted_text = ""
-                    if "Texto extraído:" in prompt:
-                        parts = prompt.split("Texto extraído:")
-                        if len(parts) > 1:
-                            extracted_text = parts[1].strip()
-                    
-                    if extracted_text:
-                        generated_text = f"En esta imagen se muestra: {extracted_text}"
                     else:
-                        generated_text = "Esta imagen muestra una interfaz de usuario con elementos interactivos."
-                
-                # Extraer solo la respuesta (eliminar el prompt si está presente)
-                if prompt in generated_text:
-                    response = generated_text[generated_text.find(prompt) + len(prompt):].strip()
-                else:
-                    response = generated_text.strip()
-                
-                return response
-                
-            except Exception as e:
-                logger.error(f"Error al generar con modelo principal: {str(e)}")
-                logger.error(traceback.format_exc())
-                
-                # Método alternativo: usar solo el texto extraído
-                extracted_text = ""
-                if "Texto extraído:" in prompt:
-                    parts = prompt.split("Texto extraído:")
-                    if len(parts) > 1:
-                        extracted_text = parts[1].strip()
-                
-                if extracted_text:
-                    return f"Basado en el texto extraído de la imagen, este paso muestra: {extracted_text}"
-                else:
-                    return "No se pudo generar una descripción detallada para este paso. Consulte la imagen para más información."
+                        raise e
+            
+            # Decodificar respuesta - Compatible con diferentes modelos
+            generated_text = ""
+            
+            # Método 1: Usar generate_caption si está disponible (BLIP2)
+            if hasattr(self.model, "generate_caption"):
+                try:
+                    generated_text = self.model.generate_caption(image=image, prompt=prompt[:100])  # Limitar longitud
+                except Exception as caption_error:
+                    logger.warning(f"Error al usar generate_caption: {str(caption_error)}")
+            
+            # Método 2: Usar el tokenizador del modelo
+            if not generated_text:
+                try:
+                    if hasattr(self.model, "config"):
+                        if hasattr(self.model.config, "text_config"):
+                            # Para BLIP2
+                            from transformers import AutoTokenizer
+                            tokenizer = AutoTokenizer.from_pretrained(self.model.config.text_config.name_or_path)
+                            generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+                        else:
+                            # Para otros modelos
+                            if hasattr(self.processor, "tokenizer"):
+                                generated_text = self.processor.tokenizer.decode(outputs[0], skip_special_tokens=True)
+                except Exception as tokenizer_error:
+                    logger.warning(f"Error al usar tokenizador: {str(tokenizer_error)}")
+            
+            # Método 3: Usar el procesador directamente
+            if not generated_text:
+                try:
+                    if hasattr(self.processor, "decode"):
+                        generated_text = self.processor.decode(outputs[0], skip_special_tokens=True)
+                except Exception as processor_error:
+                    logger.warning(f"Error al usar processor.decode: {str(processor_error)}")
+            
+            # Extraer solo la respuesta (eliminar el prompt si está presente)
+            if prompt in generated_text:
+                response = generated_text[generated_text.find(prompt) + len(prompt):].strip()
+            else:
+                response = generated_text.strip()
+            
+            return response
             
         except Exception as e:
             logger.error(f"Error al generar descripción: {str(e)}")

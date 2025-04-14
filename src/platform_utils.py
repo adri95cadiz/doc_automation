@@ -6,10 +6,8 @@ del sistema entre diferentes plataformas (Windows, Linux, macOS).
 """
 
 import os
-import sys
 import platform
 import logging
-import subprocess
 from pathlib import Path
 
 # Configuración de logging
@@ -63,100 +61,6 @@ def ensure_dir(directory):
     dir_path = normalize_path(directory)
     os.makedirs(dir_path, exist_ok=True)
     return dir_path
-
-def is_tesseract_available():
-    """
-    Verifica si Tesseract OCR está disponible en el sistema.
-    
-    Returns:
-        bool: True si Tesseract está disponible, False en caso contrario
-    """
-    try:
-        platform_name = get_platform()
-        
-        if platform_name == 'windows':
-            # En Windows, verificar en PATH y en ubicaciones comunes de instalación
-            try:
-                # Intentar ejecutar tesseract desde PATH
-                subprocess.run(["tesseract", "--version"], 
-                               stdout=subprocess.PIPE, 
-                               stderr=subprocess.PIPE, 
-                               check=True)
-                return True
-            except (subprocess.SubprocessError, FileNotFoundError):
-                # Verificar ubicaciones comunes
-                common_paths = [
-                    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-                    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"
-                ]
-                
-                for path in common_paths:
-                    if os.path.exists(path):
-                        # Agregar al PATH para futuras llamadas
-                        os.environ["PATH"] += os.pathsep + os.path.dirname(path)
-                        return True
-                
-                return False
-        else:
-            # En Linux/macOS, simplemente intentar ejecutar el comando
-            subprocess.run(["tesseract", "--version"], 
-                           stdout=subprocess.PIPE, 
-                           stderr=subprocess.PIPE, 
-                           check=True)
-            return True
-    except Exception as e:
-        logger.warning(f"Error al verificar Tesseract: {str(e)}")
-        return False
-
-def get_tesseract_cmd():
-    """
-    Obtiene el comando para ejecutar Tesseract OCR.
-    
-    Returns:
-        str: Comando de Tesseract
-    """
-    platform_name = get_platform()
-    
-    if platform_name == 'windows':
-        # En Windows, buscar en ubicaciones comunes
-        common_paths = [
-            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-            r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"
-        ]
-        
-        for path in common_paths:
-            if os.path.exists(path):
-                return path
-        
-        # Si no se encuentra en ubicaciones comunes, usar el comando básico
-        return 'tesseract'
-    else:
-        # En Linux/macOS, usar el comando básico
-        return 'tesseract'
-
-def configure_tesseract():
-    """
-    Configura Tesseract OCR para su uso en el sistema.
-    
-    Returns:
-        bool: True si la configuración fue exitosa, False en caso contrario
-    """
-    import pytesseract
-    
-    try:
-        if get_platform() == 'windows':
-            tesseract_cmd = get_tesseract_cmd()
-            if tesseract_cmd != 'tesseract':
-                pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
-                logger.info(f"Tesseract configurado en: {tesseract_cmd}")
-            
-        # Verificar que funciona
-        pytesseract.get_tesseract_version()
-        logger.info(f"Tesseract OCR disponible, versión: {pytesseract.get_tesseract_version()}")
-        return True
-    except Exception as e:
-        logger.warning(f"No se pudo configurar Tesseract OCR: {str(e)}")
-        return False
 
 def get_temp_dir():
     """

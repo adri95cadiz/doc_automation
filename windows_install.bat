@@ -39,11 +39,6 @@ echo Creando directorios necesarios...
 :: Crear directorios necesarios
 mkdir data\captures data\output data\models 2>nul
 
-echo Instalando Tesseract OCR...
-echo NOTA: Tesseract OCR debe instalarse manualmente en Windows.
-echo Por favor, descargue e instale desde: https://github.com/UB-Mannheim/tesseract/wiki
-echo Asegurese de agregar Tesseract a su PATH del sistema.
-
 echo Creando archivos de plantilla...
 
 :: Crear plantillas básicas si no existen

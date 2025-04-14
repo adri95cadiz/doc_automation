@@ -1,9 +1,3 @@
-"""
-Archivo de requisitos para el Sistema de Documentación Automatizada
-
-Este archivo lista todas las dependencias necesarias para ejecutar el sistema.
-"""
-
 # Dependencias básicas
 flask==2.3.3
 pillow==10.0.0
@@ -16,7 +10,7 @@ markdown==3.4.4
 weasyprint==59.0
 
 # Dependencias para modelos multimodales
-torch==2.0.1
+torch==2.5.1
 transformers==4.33.2
 accelerate==0.23.0
 bitsandbytes==0.41.1

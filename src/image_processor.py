@@ -12,11 +12,10 @@ import datetime
 import cv2
 import numpy as np
 from PIL import Image
-import pytesseract
 from pathlib import Path
 
 # Importar utilidades de plataforma
-from src.platform_utils import normalize_path, ensure_dir, configure_tesseract
+from src.platform_utils import normalize_path, ensure_dir
 
 # Configuración de logging
 logging.basicConfig(
@@ -43,12 +42,6 @@ class ImageProcessor:
             ocr_lang: Idioma para OCR (spa, eng, etc.)
         """
         self.ocr_lang = ocr_lang
-        
-        # Configurar Tesseract OCR
-        self.tesseract_available = configure_tesseract()
-        
-        if not self.tesseract_available:
-            logger.warning("Tesseract OCR no disponible. La extracción de texto será limitada.")
         
         logger.info(f"ImageProcessor inicializado. Idioma OCR: {ocr_lang}")
     
@@ -156,9 +149,6 @@ class ImageProcessor:
             # Cargar imagen
             image = Image.open(image_path)
             
-            # Extraer texto
-            text = self._extract_text(image)
-            
             # Detectar elementos de UI
             ui_elements = self._detect_ui_elements(image)
             
@@ -166,7 +156,6 @@ class ImageProcessor:
             result = {
                 "path": image_path,
                 "size": image.size,
-                "text": text,
                 "ui_elements": ui_elements
             }
             
@@ -177,35 +166,8 @@ class ImageProcessor:
             return {
                 "path": image_path,
                 "size": (0, 0),
-                "text": "",
                 "ui_elements": []
             }
-    
-    def _extract_text(self, image):
-        """
-        Extrae texto de una imagen.
-        
-        Args:
-            image: Imagen PIL
-            
-        Returns:
-            str: Texto extraído
-        """
-        if not self.tesseract_available:
-            return ""
-        
-        try:
-            # Convertir a escala de grises para mejor OCR
-            gray_image = image.convert('L')
-            
-            # Extraer texto
-            text = pytesseract.image_to_string(gray_image, lang=self.ocr_lang)
-            
-            return text.strip()
-            
-        except Exception as e:
-            logger.error(f"Error al extraer texto: {str(e)}")
-            return ""
     
     def _detect_ui_elements(self, image):
         """
@@ -304,20 +266,10 @@ class ImageProcessor:
             
             # Es significativo si hay clics o pulsaciones de teclas
             has_interactions = any(e["type"] in ["mouse_click", "key_press"] for e in capture_events)
+            has_scroll = any(e["type"] == "mouse_scroll" for e in capture_events)
+            has_text = any(e["type"] == "text_input" for e in capture_events)
             
-            # Es significativo si hay cambios significativos en el contenido
-            content_changed = False
-            if i > 0:
-                prev_text = processed_captures[i-1]["text"]
-                curr_text = capture["text"]
-                
-                # Calcular diferencia de texto
-                if prev_text and curr_text:
-                    # Diferencia simple basada en longitud
-                    text_diff = abs(len(curr_text) - len(prev_text))
-                    content_changed = text_diff > 50  # Umbral arbitrario
-            
-            is_significant = has_interactions or content_changed
+            is_significant = has_interactions or has_scroll or has_text
             
             # Si es significativo o es la última captura, crear un paso
             if is_significant or i == len(processed_captures) - 1:
@@ -393,14 +345,6 @@ class ImageProcessor:
             for word in words:
                 if word in context_lower:
                     counts[workflow_type] += 2  # Dar más peso al contexto
-        
-        # Verificar texto en capturas
-        for step in steps:
-            text = step["image"].get("text", "").lower()
-            for workflow_type, words in keywords.items():
-                for word in words:
-                    if word in text:
-                        counts[workflow_type] += 1
         
         # Verificar patrones
         patterns = [step["pattern"] for step in steps]
